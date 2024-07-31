@@ -29,6 +29,7 @@ public class CalculateAverage_baseline {
 
     public static void main(String[] args) throws IOException {
         Map<String, Result> measurements = Files.lines(FILE)
+                .parallel()
                 .map(line -> {
                     String[] split = line.split(";");
                     return new Measurement(split[0], Double.parseDouble(split[1]));
