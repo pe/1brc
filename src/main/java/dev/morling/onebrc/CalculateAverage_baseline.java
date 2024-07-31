@@ -31,8 +31,8 @@ public class CalculateAverage_baseline {
         Map<String, Result> measurements = Files.lines(FILE)
                 .parallel()
                 .map(line -> {
-                    String[] split = line.split(";");
-                    return new Measurement(split[0], Double.parseDouble(split[1]));
+                    int separatorPos = line.indexOf(";");
+                    return new Measurement(line.substring(0, separatorPos), Double.parseDouble(line.substring(separatorPos + 1)));
                 })
                 .collect(Collectors.groupingBy(Measurement::station, Collector.of(
                         AggregatedMeasurements::new,
