@@ -16,20 +16,30 @@
 package dev.morling.onebrc;
 
 import java.io.IOException;
-import java.nio.file.Files;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Map;
-import java.util.TreeMap;
+import java.nio.file.StandardOpenOption;
+import java.util.*;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
+@SuppressWarnings("preview")
 public class CalculateAverage_baseline {
     private static final Path FILE = Paths.get("./measurements.txt");
 
     public static void main(String[] args) throws IOException {
-        Map<String, Result> measurements = Files.lines(FILE)
+        var channel = FileChannel.open(FILE, StandardOpenOption.READ);
+        Map<String, Result> measurements = splitIntoChunks(channel)
                 .parallel()
+                .flatMap(CalculateAverage_baseline::readLines)
                 .map(line -> {
                     int separatorPos = line.indexOf(";");
                     return new Measurement(line.substring(0, separatorPos), Double.parseDouble(line.substring(separatorPos + 1)));
@@ -53,6 +63,61 @@ public class CalculateAverage_baseline {
                         agg -> new Result(agg.min, (Math.round(agg.sum * 10.0) / 10.0) / agg.count, agg.max))));
         Map<String, Result> sorted = new TreeMap<>(measurements);
         System.out.println(sorted);
+    }
+
+    /**
+     * Split the fileChannel by the number of CPUs
+     */
+    private static Stream<MemorySegment> splitIntoChunks(final FileChannel fileChannel) throws IOException {
+        final var wholeFileSegment = fileChannel.map(MapMode.READ_ONLY, 0, fileChannel.size(), Arena.global());
+        final var fileSize = fileChannel.size();
+        final var chunkSize = fileSize / Runtime.getRuntime().availableProcessors();
+
+        final var chunks = new ArrayList<MemorySegment>();
+        long chunkStart = 0L;
+        while (chunkStart < fileSize) {
+            long chunkEnd = Math.min((chunkStart + chunkSize), fileSize);
+            // starting from the calculated chunkEnd, seek the next newline to get the real chunkEnd
+            while (chunkEnd < fileSize && wholeFileSegment.getAtIndex(ValueLayout.JAVA_BYTE, chunkEnd) != '\n') {
+                chunkEnd++;
+            }
+            if (chunkEnd < fileSize) {
+                chunks.add(wholeFileSegment.asSlice(chunkStart, chunkEnd - chunkStart + 1));
+            } else {
+                // special case: we are at the end of the file
+                chunks.add(wholeFileSegment.asSlice(chunkStart, chunkEnd - chunkStart));
+            }
+            chunkStart = chunkEnd + 1;
+        }
+        return chunks.stream();
+    }
+
+    /**
+     * Read lines from the MemorySegment
+     */
+    private static Stream<String> readLines(MemorySegment segment) {
+        final byte[] buffer = new byte[100];
+
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new Iterator<>() {
+            long position = 0;
+
+            @Override
+            public boolean hasNext() {
+                return position < segment.byteSize();
+            }
+
+            @Override
+            public String next() {
+                var index = 0;
+                var currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
+                while (currentChar != '\n') {
+                    buffer[index] = currentChar;
+                    index++;
+                    currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
+                }
+                return new String(buffer, 0, index, StandardCharsets.UTF_8);
+            }
+        }, Spliterator.IMMUTABLE), true);
     }
 
     private record Measurement(String station, double value) {
