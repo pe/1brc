@@ -37,11 +37,7 @@ public class CalculateAverage_baseline {
         var channel = FileChannel.open(FILE, StandardOpenOption.READ);
         Map<String, Result> measurements = splitIntoChunks(channel)
                 .parallel()
-                .flatMap(CalculateAverage_baseline::readLines)
-                .map(line -> {
-                    int separatorPos = line.indexOf(";");
-                    return new Measurement(line.substring(0, separatorPos), Double.parseDouble(line.substring(separatorPos + 1)));
-                })
+                .flatMap(CalculateAverage_baseline::readMeasurements)
                 .collect(Collectors.groupingBy(Measurement::station, Collector.of(
                         AggregatedMeasurements::new,
                         (agg, measurement) -> {
@@ -98,7 +94,9 @@ public class CalculateAverage_baseline {
 
     }
 
-    private static Stream<String> readLines(ByteBuffer byteBuffer) {
+    private static Stream<Measurement> readMeasurements(ByteBuffer byteBuffer) {
+        final byte[] buffer = new byte[100];
+
         return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new Iterator<>() {
 
             @Override
@@ -107,15 +105,24 @@ public class CalculateAverage_baseline {
             }
 
             @Override
-            public String next() {
-                ByteBuffer string = byteBuffer.slice();
-                int length = 0;
-                while (byteBuffer.hasRemaining() && byteBuffer.get() != '\n') {
-                    length++;
-                }
-                string.limit(length);
-                return StandardCharsets.UTF_8.decode(string).toString();
+            public Measurement next() {
+                var station = readString(';');
+                var value = readString('\n');
+
+                return new Measurement(station, Double.parseDouble(value));
             }
+
+            private String readString(char endChar) {
+                var index = 0;
+                var currentChar = byteBuffer.get();
+                while (currentChar != endChar) {
+                    buffer[index] = currentChar;
+                    index++;
+                    currentChar = byteBuffer.get();
+                }
+                return new String(buffer, 0, index, StandardCharsets.UTF_8);
+            }
+
         }, Spliterator.IMMUTABLE), true);
     }
 
