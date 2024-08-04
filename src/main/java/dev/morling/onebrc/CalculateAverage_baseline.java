@@ -39,11 +39,7 @@ public class CalculateAverage_baseline {
         var channel = FileChannel.open(FILE, StandardOpenOption.READ);
         Map<String, Result> measurements = splitIntoChunks(channel)
                 .parallel()
-                .flatMap(CalculateAverage_baseline::readLines)
-                .map(line -> {
-                    int separatorPos = line.indexOf(";");
-                    return new Measurement(line.substring(0, separatorPos), Double.parseDouble(line.substring(separatorPos + 1)));
-                })
+                .flatMap(CalculateAverage_baseline::readMeasurements)
                 .collect(Collectors.groupingBy(Measurement::station, Collector.of(
                         AggregatedMeasurements::new,
                         (agg, measurement) -> {
@@ -95,7 +91,7 @@ public class CalculateAverage_baseline {
     /**
      * Read lines from the MemorySegment
      */
-    private static Stream<String> readLines(MemorySegment segment) {
+    private static Stream<Measurement> readMeasurements(MemorySegment segment) {
         final byte[] buffer = new byte[100];
 
         return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new Iterator<>() {
@@ -107,10 +103,17 @@ public class CalculateAverage_baseline {
             }
 
             @Override
-            public String next() {
+            public Measurement next() {
+                var station = readString(';');
+                var value = readString('\n');
+
+                return new Measurement(station, Double.parseDouble(value));
+            }
+
+            private String readString(char endChar) {
                 var index = 0;
                 var currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
-                while (currentChar != '\n') {
+                while (currentChar != endChar) {
                     buffer[index] = currentChar;
                     index++;
                     currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
