@@ -86,7 +86,8 @@ public class CalculateAverage_baseline {
 
                     position += realEnd;
                     return byteBuffer.limit(realEnd);
-                } catch (IOException ex) {
+                }
+                catch (IOException ex) {
                     throw new UncheckedIOException(ex);
                 }
             }
@@ -107,9 +108,9 @@ public class CalculateAverage_baseline {
             @Override
             public Measurement next() {
                 var station = readString(';');
-                var value = readStringWithoutDot('\n');
+                var value = readInt('\n');
 
-                return new Measurement(station, Integer.parseInt(value));
+                return new Measurement(station, value);
             }
 
             private String readString(char endChar) {
@@ -123,17 +124,25 @@ public class CalculateAverage_baseline {
                 return new String(buffer, 0, index, StandardCharsets.UTF_8);
             }
 
-            private String readStringWithoutDot(char endChar) {
-                var index = 0;
+            private int readInt(char endChar) {
+                var negative = false;
+                var value = 0;
+
                 var currentChar = byteBuffer.get();
+                if (currentChar == '-') {
+                    negative = true;
+                    currentChar = byteBuffer.get();
+                }
                 while (currentChar != endChar) {
                     if (currentChar != '.') {
-                        buffer[index] = currentChar;
-                        index++;
+                        value = (value * 10) + (currentChar - '0');
                     }
                     currentChar = byteBuffer.get();
                 }
-                return new String(buffer, 0, index, StandardCharsets.UTF_8);
+                if (negative) {
+                    value *= -1;
+                }
+                return value;
             }
         }, Spliterator.IMMUTABLE), true);
     }
