@@ -56,7 +56,7 @@ public class CalculateAverage_baseline {
                             agg.count = agg1.count + agg2.count;
                             return agg;
                         },
-                        agg -> new Result(agg.min, (Math.round(agg.sum * 10.0) / 10.0) / agg.count, agg.max))));
+                        agg -> new Result(agg.min, (1.0 * agg.sum / agg.count), agg.max))));
         Map<String, Result> sorted = new TreeMap<>(measurements);
         System.out.println(sorted);
     }
@@ -105,9 +105,9 @@ public class CalculateAverage_baseline {
             @Override
             public Measurement next() {
                 var station = readString(';');
-                var value = readString('\n');
+                var value = readStringWithoutDot('\n');
 
-                return new Measurement(station, Double.parseDouble(value));
+                return new Measurement(station, Integer.parseInt(value));
             }
 
             private String readString(char endChar) {
@@ -120,26 +120,35 @@ public class CalculateAverage_baseline {
                 }
                 return new String(buffer, 0, index, StandardCharsets.UTF_8);
             }
+
+            private String readStringWithoutDot(char endChar) {
+                var index = 0;
+                var currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
+                while (currentChar != endChar) {
+                    if (currentChar != '.') {
+                        buffer[index] = currentChar;
+                        index++;
+                    }
+                    currentChar = segment.get(ValueLayout.JAVA_BYTE, position++);
+                }
+                return new String(buffer, 0, index, StandardCharsets.UTF_8);
+            }
         }, Spliterator.IMMUTABLE), true);
     }
 
-    private record Measurement(String station, double value) {
+    private record Measurement(String station, int value) {
     }
 
     private static class AggregatedMeasurements {
-        private double min = Double.POSITIVE_INFINITY;
-        private double max = Double.NEGATIVE_INFINITY;
-        private double sum;
+        private int min = Integer.MAX_VALUE;
+        private int max = Integer.MIN_VALUE;
+        private int sum;
         private long count;
     }
 
     private record Result(double min, double mean, double max) {
         public String toString() {
-            return round(min) + "/" + round(mean) + "/" + round(max);
-        }
-
-        private double round(double value) {
-            return Math.round(value * 10.0) / 10.0;
+            return min / 10.0 + "/" + Math.round(mean) / 10.0 + "/" + max / 10.0;
         }
     }
 }
